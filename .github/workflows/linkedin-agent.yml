@@ -7,6 +7,9 @@ on:
     - cron: "30 3 * * *"   # 09:00 IST
     - cron: "30 13 * * *"  # 19:00 IST
 
+permissions:
+  contents: write
+
 jobs:
   run-agent:
     runs-on: ubuntu-latest
@@ -37,3 +40,17 @@ jobs:
           DRY_RUN: ${{ secrets.DRY_RUN }}
         run: |
           uv run python -m src.main
+
+      - name: Save history
+        run: |
+          git config user.name "linkedin-ai-agent"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add data/posts.json
+
+          if git diff --cached --quiet; then
+            echo "No history changes to commit."
+          else
+            git commit -m "Update LinkedIn agent history"
+            git push
+          fi
