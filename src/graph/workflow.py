@@ -414,6 +414,8 @@ def publish_node(state: LinkedInState):
         print(post)
         print("--------------------------------")
 
+        print("🔥 DEBUG: ABOUT TO SAVE POST TO HISTORY")
+
         save_post(
             {
                 "content": post,
