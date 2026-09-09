@@ -1,1 +1,19 @@
-{"posts": [], "executions": {}}
+{
+  "posts": [
+    {
+      "content": "**Hook**  \nWhen your RAG service must answer thousands of queries per second while the knowledge base swells to tens of millions of chunks, a single vector store becomes a latency bottleneck.\n\n**Problem / Context**  \nA monolithic index forces every request to scan the entire embedding collection, driving P99 latency beyond acceptable SLA limits and making horizontal scaling impossible.\n\n**Technical Explanation**  \nSharding partitions the embedding space across independent nodes. Each chunk is hashed to a shard, where a local ANN index (e.g., HNSW) is built. At query time the user‑question embedding is broadcast to all shards, each returns its local top‑k, and a coordinator merges and optionally re‑ranks the combined list (MMR or cross‑encoder). Normalized vectors ensure cosine similarity works out‑of‑the‑box, and hybrid retrieval can be added by merging BM25 scores after the merge step.\n\n**Practical Engineering Insight**  \nIn a recent production rollout we deployed **four Qdrant shards** (≈2.5 M vectors per pod, 1536‑dimensional embeddings). With HNSW (`ef_construction=200`, `M=16`) each shard fits comfortably in RAM, and the coordinator merges the 40 candidates (4 × top‑10) in < 30 ms. Adding a semantic cache raised the hit‑rate to ~45 %, shaving another 30 ms off the overall latency.\n\n**Trade‑off / Limitation**  \nThe architecture introduces orchestration complexity: shard rebalancing, health checks, and HA replication require extra DevOps effort and hardware headroom, which can outweigh the latency gains for smaller corpora.\n\n**Takeaway**  \nSharding lets you keep P99 latency in the sub‑100 ms range even at 10 M‑plus vectors, but you must budget for the operational overhead it brings.\n\n**Question**  \nWhat strategies have you found most effective for automating shard rebalancing without disrupting live traffic?\n\n#VectorSearch #RAG #ScalableAI #MLEngineering #HybridRetrieval",
+      "topic": "RAG",
+      "subtopic": "Vector Database Sharding for Retrieval-Augmented Generation",
+      "angle": "Architecting and implementing sharded vector stores to achieve low-latency, high-throughput RAG pipelines in production, including trade‑offs, tooling choices, and performance benchmarking",
+      "linkedin_post_id": null,
+      "quality_score": 0.92,
+      "duplicate_score": 0.0,
+      "status": "dry_run"
+    }
+  ],
+  "executions": {
+    "2026-09-09-23": {
+      "status": "started"
+    }
+  }
+}
