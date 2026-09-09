@@ -406,7 +406,6 @@ def publish_node(state: LinkedInState):
     ).lower() == "true"
 
     if dry_run:
-
         print("\n🧪 DRY RUN MODE")
         print("LinkedIn publishing is disabled.")
 
@@ -414,6 +413,21 @@ def publish_node(state: LinkedInState):
         print("--------------------------------")
         print(post)
         print("--------------------------------")
+
+        save_post(
+            {
+                "content": post,
+                "topic": state.get("topic"),
+                "subtopic": state.get("subtopic"),
+                "angle": state.get("angle"),
+                "linkedin_post_id": None,
+                "quality_score": state.get("quality_score"),
+                "duplicate_score": state.get("duplicate_score"),
+                "status": "dry_run",
+            }
+        )
+
+        print("💾 Dry-run post saved to history")
 
         return {
             "status": "dry_run"
