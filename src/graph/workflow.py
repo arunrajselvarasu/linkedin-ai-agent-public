@@ -37,10 +37,17 @@ MAX_RETRIES = 3
 
 def execution_node(state: LinkedInState):
     """
-    Create a unique execution key for the current
-    scheduled run.
+    Create a unique execution key for the
+    current scheduled slot.
 
-    Uses Asia/Kolkata timezone.
+    Morning:
+        09:00 IST
+
+    Evening:
+        19:00 IST
+
+    This prevents the same scheduled slot
+    from being processed more than once.
     """
 
     print("\n==============================")
@@ -51,18 +58,31 @@ def execution_node(state: LinkedInState):
         ZoneInfo("Asia/Kolkata")
     )
 
+    # ----------------------------------------
+    # Determine schedule slot
+    # ----------------------------------------
+
+    if now.hour < 12:
+        slot = "morning"
+    else:
+        slot = "evening"
+
     # Example:
-    # 2026-09-09-09
     #
-    # This means:
-    # one execution per hour.
-    execution_key = now.strftime(
-        "%Y-%m-%d-%H"
+    # 2026-09-09-morning
+    # 2026-09-09-evening
+
+    execution_key = (
+        f"{now.strftime('%Y-%m-%d')}-{slot}"
     )
 
     print(
         f"Execution Key: {execution_key}"
     )
+
+    # ----------------------------------------
+    # Claim execution
+    # ----------------------------------------
 
     is_new_execution = claim_execution(
         execution_key
@@ -88,7 +108,6 @@ def execution_node(state: LinkedInState):
         "execution_status": "started",
         "status": "execution_started",
     }
-
 def route_after_execution(state: LinkedInState):
     """
     Stop the workflow if this execution was already processed.
