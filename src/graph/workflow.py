@@ -406,6 +406,7 @@ def publish_node(state: LinkedInState):
     ).lower() == "true"
 
     if dry_run:
+        print("🔥🔥🔥 NEW WORKFLOW CODE IS RUNNING 🔥🔥🔥")
         print("\n🧪 DRY RUN MODE")
         print("LinkedIn publishing is disabled.")
 
