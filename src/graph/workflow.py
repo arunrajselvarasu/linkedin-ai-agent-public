@@ -404,6 +404,9 @@ def publish_node(state: LinkedInState):
         "DRY_RUN",
         "true"
     ).lower() == "true"
+    print(f"🔥 DRY_RUN VALUE: {dry_run}")
+
+    print(f"🔥 DRY_RUN ENV: {os.getenv('DRY_RUN')}")
 
     if dry_run:
         print("🔥🔥🔥 NEW WORKFLOW CODE IS RUNNING 🔥🔥🔥")
