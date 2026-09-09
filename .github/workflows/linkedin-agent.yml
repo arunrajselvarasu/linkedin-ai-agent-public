@@ -18,6 +18,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Debug checkout
+        run: |
+          echo "=== COMMIT ==="
+          git rev-parse HEAD
+
+          echo "=== WORKFLOW FILE ==="
+          grep -n -A25 "DRY RUN MODE" src/graph/workflow.py
+
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
