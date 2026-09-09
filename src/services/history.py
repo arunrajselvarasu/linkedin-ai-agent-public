@@ -1,62 +1,58 @@
-import sqlite3
+import json
 from pathlib import Path
 from typing import Any
 
 
-DATABASE_FILE = Path("data/linkedin_agent.db")
+HISTORY_FILE = Path("data/posts.json")
 
 
-def get_connection():
-    DATABASE_FILE.parent.mkdir(
+def _load_data() -> dict[str, Any]:
+    HISTORY_FILE.parent.mkdir(
         parents=True,
         exist_ok=True,
     )
 
-    connection = sqlite3.connect(
-        DATABASE_FILE
-    )
+    if not HISTORY_FILE.exists():
+        data = {
+            "posts": [],
+            "executions": {},
+        }
 
-    connection.row_factory = sqlite3.Row
-
-    return connection
-
-
-def initialize_database():
-    connection = get_connection()
-
-    connection.execute(
-        """
-        CREATE TABLE IF NOT EXISTS posts (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            content TEXT NOT NULL,
-            topic TEXT,
-            subtopic TEXT,
-            angle TEXT,
-            linkedin_post_id TEXT,
-            quality_score REAL,
-            duplicate_score REAL,
-            status TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        HISTORY_FILE.write_text(
+            json.dumps(data, indent=2),
+            encoding="utf-8",
         )
-        """
-    )
 
-    # --------------------------------------------------------
-    # IDEMPOTENCY TABLE
-    # --------------------------------------------------------
+        return data
 
-    connection.execute(
-        """
-        CREATE TABLE IF NOT EXISTS executions (
-            execution_key TEXT PRIMARY KEY,
-            status TEXT NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    try:
+        return json.loads(
+            HISTORY_FILE.read_text(
+                encoding="utf-8"
+            )
         )
-        """
+
+    except json.JSONDecodeError:
+        return {
+            "posts": [],
+            "executions": {},
+        }
+
+
+def _save_data(data: dict[str, Any]):
+    HISTORY_FILE.parent.mkdir(
+        parents=True,
+        exist_ok=True,
     )
 
-    connection.commit()
-    connection.close()
+    HISTORY_FILE.write_text(
+        json.dumps(
+            data,
+            indent=2,
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
 
 
 # ============================================================
@@ -64,68 +60,34 @@ def initialize_database():
 # ============================================================
 
 def load_history() -> list[dict[str, Any]]:
-    initialize_database()
+    data = _load_data()
 
-    connection = get_connection()
-
-    rows = connection.execute(
-        """
-        SELECT
-            content,
-            topic,
-            subtopic,
-            angle,
-            linkedin_post_id,
-            quality_score,
-            duplicate_score,
-            status,
-            created_at
-        FROM posts
-        ORDER BY id ASC
-        """
-    ).fetchall()
-
-    connection.close()
-
-    return [
-        dict(row)
-        for row in rows
-    ]
+    return data.get(
+        "posts",
+        [],
+    )
 
 
 def save_post(post_data: dict[str, Any]):
-    initialize_database()
+    data = _load_data()
 
-    connection = get_connection()
+    post = {
+        "content": post_data.get("content"),
+        "topic": post_data.get("topic"),
+        "subtopic": post_data.get("subtopic"),
+        "angle": post_data.get("angle"),
+        "linkedin_post_id": post_data.get("linkedin_post_id"),
+        "quality_score": post_data.get("quality_score"),
+        "duplicate_score": post_data.get("duplicate_score"),
+        "status": post_data.get("status"),
+    }
 
-    connection.execute(
-        """
-        INSERT INTO posts (
-            content,
-            topic,
-            subtopic,
-            angle,
-            linkedin_post_id,
-            quality_score,
-            duplicate_score,
-            status
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        (
-            post_data.get("content"),
-            post_data.get("topic"),
-            post_data.get("subtopic"),
-            post_data.get("angle"),
-            post_data.get("linkedin_post_id"),
-            post_data.get("quality_score"),
-            post_data.get("duplicate_score"),
-            post_data.get("status"),
-        ),
-    )
+    data.setdefault(
+        "posts",
+        [],
+    ).append(post)
 
-    connection.commit()
-    connection.close()
+    _save_data(data)
 
 
 # ============================================================
@@ -134,44 +96,30 @@ def save_post(post_data: dict[str, Any]):
 
 def claim_execution(execution_key: str) -> bool:
     """
-    Atomically claim an execution.
+    Claim an execution key.
 
     Returns:
-        True  -> this execution is new
+        True  -> execution is new
         False -> execution already exists
     """
 
-    initialize_database()
+    data = _load_data()
 
-    connection = get_connection()
+    executions = data.setdefault(
+        "executions",
+        {},
+    )
 
-    try:
-        connection.execute(
-            """
-            INSERT INTO executions (
-                execution_key,
-                status
-            )
-            VALUES (?, ?)
-            """,
-            (
-                execution_key,
-                "started",
-            ),
-        )
-
-        connection.commit()
-
-        return True
-
-    except sqlite3.IntegrityError:
-        # Same execution_key already exists.
-        connection.rollback()
-
+    if execution_key in executions:
         return False
 
-    finally:
-        connection.close()
+    executions[execution_key] = {
+        "status": "started",
+    }
+
+    _save_data(data)
+
+    return True
 
 
 def update_execution_status(
@@ -179,24 +127,17 @@ def update_execution_status(
     status: str,
 ):
     """
-    Update execution status.
+    Update the execution status.
     """
 
-    initialize_database()
+    data = _load_data()
 
-    connection = get_connection()
-
-    connection.execute(
-        """
-        UPDATE executions
-        SET status = ?
-        WHERE execution_key = ?
-        """,
-        (
-            status,
-            execution_key,
-        ),
+    executions = data.setdefault(
+        "executions",
+        {},
     )
 
-    connection.commit()
-    connection.close()
+    if execution_key in executions:
+        executions[execution_key]["status"] = status
+
+    _save_data(data)
