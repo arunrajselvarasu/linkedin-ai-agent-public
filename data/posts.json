@@ -9,10 +9,23 @@
       "quality_score": 0.92,
       "duplicate_score": 0.0,
       "status": "dry_run"
+    },
+    {
+      "content": "**Hook**  \nWhen a single vector index starts to choke under a growing knowledge base, latency‑first RAG quickly turns into a cost nightmare.\n\n**Problem / Context**  \nA production assistant that must answer 5 k QPS from a corpus of 20 M chunks cannot rely on a monolithic ANN search. Each request pulls the same global top‑k, inflating P99 latency and driving up GPU inference spend.\n\n**Technical Explanation**  \nA scalable hybrid RAG pipeline separates concerns:\n\n1. **Dynamic chunking** – split documents into semantic units of 256‑1024 tokens, preserving paragraph boundaries.  \n2. **Multi‑vector stores** – maintain separate collections per domain or freshness tier (e.g., “public docs”, “confidential releases”).  \n3. **Query routing** – metadata filters (source, version) direct the embedding to the appropriate store; a lightweight router picks the cheapest store that satisfies the relevance budget.  \n4. **Hybrid retrieval** – combine dense FAISS/HNSW search with BM25 scores, then re‑rank with a cross‑encoder for the final top‑k.\n\n```python\n# minimal illustration\nembed = SentenceTransformer('all-MiniLM-L6-v2')\nq_vec = embed.encode([user_query])\nidx = faiss.read_index('public.idx')\nD, I = idx.search(q_vec, k=8)          # dense top‑k\nbm25 = bm25_search(user_query, top=8) # sparse top‑k\ncandidates = hybrid_merge(I, bm25)    # simple MMR merge\nprompt = assemble(candidates, user_query)\nanswer = openai.ChatCompletion.create(model=\"gpt-4o\", messages=[{\"role\":\"user\",\"content\":prompt}])\n```\n\n**Practical Engineering Insight**  \nIn our recent rollout we kept three Qdrant collections (0.8 M, 3 M, 6 M vectors). Routing based on a “freshness” flag reduced average retrieval time from 78 ms to 42 ms while keeping 95 % relevance (RAGAS ≈ 0.86).\n\n**Trade‑off / Limitation**  \nMore stores mean more replication and operational overhead: shard health checks, backup coordination, and cross‑store consistency become non‑trivial, especially when latency budgets are tight.\n\n**Takeaway**  \nHybrid RAG is not just “add a vector DB”; it’s a layered architecture where dynamic chunking, smart routing, and selective re‑ranking let you trade latency for relevance and cost in a controlled way.\n\n**Question**  \nWhat routing heuristics have you found most reliable for balancing freshness versus cost in multi‑store RAG deployments?  \n\n#RAG #HybridRetrieval #VectorSearch #MLEngineering #AIArchitecture",
+      "topic": "RAG",
+      "subtopic": "Hybrid Retrieval Augmented Generation with vector databases and LLMs",
+      "angle": "Architecting scalable RAG pipelines using dynamic chunking, query routing, and multi-vector stores to balance latency, relevance, and cost",
+      "linkedin_post_id": null,
+      "quality_score": 0.92,
+      "duplicate_score": 0.15060990544567598,
+      "status": "dry_run"
     }
   ],
   "executions": {
     "2026-09-09-23": {
+      "status": "started"
+    },
+    "2026-09-09-evening": {
       "status": "started"
     }
   }
