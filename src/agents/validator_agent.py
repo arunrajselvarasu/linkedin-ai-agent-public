@@ -1,99 +1,101 @@
-import json
-
 from src.llm import get_llm
-from src.models.schemas import ContentValidation
 
 
-def validate_post(
-    topic: str,
-    subtopic: str,
-    angle: str,
-    post: str,
-) -> ContentValidation:
+def validate_post(post: str, research: str = "") -> dict:
     """
-    Validate a generated LinkedIn post for quality,
-    technical relevance, and audience suitability.
+    Validate a LinkedIn post before publishing.
+
+    The validator checks:
+    - AI/ML relevance
+    - Technical correctness
+    - Professional tone
+    - Recruiter relevance
+    - AI engineer relevance
+    - Grammar
+    - Unsupported quantitative claims
+    - Potential hallucinations
     """
 
-    llm = get_llm(json_mode=True)
+    llm = get_llm(
+        temperature=0.0,
+        json_mode=True,
+    )
 
     prompt = f"""
-You are a strict AI/ML content quality reviewer.
+You are a strict technical content reviewer
+for an AI/ML engineer's LinkedIn account.
 
-Evaluate the following LinkedIn post.
+The audience is:
+1. Recruiters
+2. AI/ML engineers
+3. Software engineers interested in AI
 
-TOPIC:
-{topic}
-
-SUBTOPIC:
-{subtopic}
-
-ANGLE:
-{angle}
+Your job is to decide whether the post is safe
+and technically credible enough to publish.
 
 POST:
+----------------
 {post}
+----------------
 
-Evaluate the post using these criteria:
+RESEARCH / SOURCE CONTEXT:
+----------------
+{research}
+----------------
+
+Evaluate the following:
 
 1. is_ai_ml
-   - Is the content genuinely related to AI or Machine Learning?
+   - The post must genuinely relate to AI, ML,
+     GenAI, LLMs, RAG, agents, automation,
+     NLP, computer vision, MLOps or related topics.
 
 2. technically_sound
-   - Are the technical statements accurate?
-   - Are there misleading or unsupported claims?
+   - Technical statements must be accurate.
+   - Reject misleading or fundamentally incorrect claims.
 
 3. professional
-   - Is the writing suitable for LinkedIn professionals?
+   - Professional LinkedIn tone.
+   - No clickbait, excessive hype or unrealistic claims.
 
 4. recruiter_relevant
-   - Would the content demonstrate useful AI/ML knowledge
-     to a technical recruiter or hiring manager?
+   - Demonstrates useful engineering knowledge,
+     skills, experience or problem-solving ability.
 
 5. engineer_relevant
-   - Would an AI/ML engineer find the technical content useful?
+   - Provides meaningful technical value to AI/ML
+     or software engineers.
 
 6. grammar_ok
-   - Is the grammar and readability acceptable?
+   - Clear and grammatically understandable.
 
-7. quality_score
-   - Overall quality from 0.0 to 1.0.
+7. unsupported_claims
+   - Identify claims that cannot reasonably be supported
+     by the supplied research.
+   - Pay special attention to numbers, percentages,
+     benchmarks, performance improvements, rankings,
+     adoption statistics and dates.
 
-SCORING GUIDELINES:
+8. hallucination_risk
+   - Identify statements that appear invented,
+     exaggerated or presented as facts without evidence.
 
-0.90 - 1.00 = Excellent
-0.80 - 0.89 = Good
-0.70 - 0.79 = Acceptable but needs improvement
-Below 0.70 = Poor
+IMPORTANT RULE:
 
-A post should only be accepted when:
+If the post contains a specific quantitative claim
+such as:
 
-- is_ai_ml = true
-- technically_sound = true
-- professional = true
-- recruiter_relevant = true
-- engineer_relevant = true
-- grammar_ok = true
-- quality_score >= 0.85
+"improves performance by 40%"
+"reduces latency by 60%"
+"used by 80% of companies"
 
-IMPORTANT:
+and the supplied research does not support that claim,
+consider it unsafe.
 
-Do not be overly generous.
+Do NOT reject normal technical explanations simply
+because they do not have citations.
 
-Reject content that:
-- is generic motivational content
-- contains obvious technical inaccuracies
-- contains unsupported statistics
-- is unrelated to AI/ML
-- is too shallow
-- is poorly written
-- contains excessive emojis
-- sounds like spam
-- is repetitive
-
-Return ONLY valid JSON.
-
-The JSON MUST contain exactly these fields:
+Return ONLY valid JSON with exactly this structure:
 
 {{
     "is_ai_ml": true,
@@ -102,27 +104,33 @@ The JSON MUST contain exactly these fields:
     "recruiter_relevant": true,
     "engineer_relevant": true,
     "grammar_ok": true,
-    "quality_score": 0.90,
-    "feedback": "Short explanation of the evaluation"
+    "unsupported_claims": [],
+    "hallucination_risk": false,
+    "quality_score": 0.95,
+    "feedback": "Short explanation"
 }}
+
+Rules for quality_score:
+
+0.90 - 1.00:
+Excellent and safe to publish.
+
+0.85 - 0.89:
+Good and acceptable.
+
+0.70 - 0.84:
+Needs improvement.
+
+Below 0.70:
+Unsafe or poor quality.
+
+If unsupported quantitative claims or significant
+hallucination risk exists, quality_score must be
+below 0.85.
+
+Return JSON only.
 """
 
     response = llm.invoke(prompt)
 
-    content = response.content
-
-    if isinstance(content, list):
-        content = "".join(
-            item.get("text", "")
-            for item in content
-            if isinstance(item, dict)
-        )
-
-    try:
-        data = json.loads(content)
-    except json.JSONDecodeError as exc:
-        raise ValueError(
-            f"Validator returned invalid JSON:\n{content}"
-        ) from exc
-
-    return ContentValidation.model_validate(data)
+    return response.content
