@@ -33,6 +33,55 @@ load_dotenv()
 # CONFIGURATION
 # ============================================================
 
+def mark_execution_completed(state: LinkedInState):
+    """
+    Mark the current execution as completed.
+    """
+
+    execution_key = state.get(
+        "execution_key"
+    )
+
+    if execution_key:
+        update_execution_status(
+            execution_key,
+            "completed",
+        )
+
+    print(
+        f"✅ Execution completed: "
+        f"{execution_key}"
+    )
+
+    return {
+        "execution_status": "completed",
+    }
+
+def mark_execution_failed(state: LinkedInState):
+    """
+    Mark the current execution as failed.
+    """
+
+    execution_key = state.get(
+        "execution_key"
+    )
+
+    if execution_key:
+        update_execution_status(
+            execution_key,
+            "failed",
+        )
+
+    print(
+        f"❌ Execution failed: "
+        f"{execution_key}"
+    )
+
+    return {
+        "execution_status": "failed",
+        "status": "failed",
+    }
+
 MAX_RETRIES = 3
 
 def execution_node(state: LinkedInState):
