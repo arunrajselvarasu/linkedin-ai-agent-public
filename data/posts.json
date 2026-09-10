@@ -19,6 +19,16 @@
       "quality_score": 0.92,
       "duplicate_score": 0.15060990544567598,
       "status": "dry_run"
+    },
+    {
+      "content": "**Hook**  \nWhen an enterprise RAG service must answer thousands of queries per second while the knowledge base grows by millions of chunks, a single synchronous vector lookup becomes the latency choke point.\n\n**Problem / Context**  \nMonolithic retrieval forces every request to wait for dense embedding, sparse BM25, and any re‑ranking to finish sequentially. The result: P99 latency spikes and the system can’t keep up with continuous document updates.\n\n**Technical Explanation**  \nA scalable pipeline decouples these steps:\n\n1. **Async query handling** – the original query is sent to a BM25 index while a lightweight LLM rewrites it (HyDE) and embeds the rewrite in parallel.  \n2. **Hybrid first‑stage retrieval** – dense ANN (e.g., Qdrant) and sparse BM25 return a broad top‑k set.  \n3. **Cross‑encoder re‑ranking** – a second‑stage model refines the list, optionally applying a corrective RAG check against trusted sources.  \n4. **Dynamic prompt templating** – the final N chunks, enriched with metadata (source, version, timestamps), are injected into a per‑query template that can toggle citations or freshness filters before the LLM (served via vLLM) generates the answer.\n\n**Practical Engineering Insight**  \nIn a recent rollout, we kept the embedding and BM25 calls in separate async tasks and merged results with an MMR‑style coordinator. The end‑to‑end response time stayed under 100 ms even with a 12 M‑chunk corpus, while a simple cache of recent rewrite embeddings cut repeat‑query cost by ~40 %.\n\n**Trade‑off / Limitation**  \nAdding a cross‑encoder re‑ranker improves precision but introduces extra GPU load and a few milliseconds of latency; teams must balance relevance gains against cost and SLA targets.\n\n**Takeaway**  \nAsync hybrid retrieval lets you keep latency low, stay current with document updates, and still deliver citation‑rich answers—provided you monitor the extra compute budget of the re‑ranking stage.\n\n**Question**  \nHow do you decide when the latency penalty of a cross‑encoder re‑ranker is justified for your enterprise use case?\n\n#RAG #HybridRetrieval #MLEngineering #AIArchitecture #ScalableAI",
+      "topic": "RAG",
+      "subtopic": "Hybrid Retrieval-Augmented Generation with Multi-Stage Retrieval",
+      "angle": "Architecting a scalable, low-latency RAG pipeline using async vector search, query rewriting, and dynamic prompt templating for enterprise knowledge bases",
+      "linkedin_post_id": null,
+      "quality_score": 0.94,
+      "duplicate_score": 0.16313166129030268,
+      "status": "dry_run"
     }
   ],
   "executions": {
@@ -27,6 +37,9 @@
     },
     "2026-09-09-evening": {
       "status": "started"
+    },
+    "2026-09-10-morning": {
+      "status": "completed"
     }
   }
 }

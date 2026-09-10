@@ -4,8 +4,16 @@ MIN_QUALITY_SCORE = 0.85
 
 def route_after_validation(state):
     """
-    Decide whether the generated post is valid
-    or needs another generation attempt.
+    Decide what happens after validation.
+
+    Valid post:
+        → duplicate_check
+
+    Invalid post:
+        → regenerate
+
+    Maximum retries:
+        → failed
     """
 
     quality_score = state.get(
@@ -13,7 +21,7 @@ def route_after_validation(state):
         0.0,
     )
 
-    is_valid = (
+    validation_passed = (
         state.get("is_ai_ml", False)
         and state.get("technically_sound", False)
         and state.get("professional", False)
@@ -23,8 +31,20 @@ def route_after_validation(state):
         and quality_score >= MIN_QUALITY_SCORE
     )
 
-    if is_valid:
+    # --------------------------------------------------------
+    # VALIDATION PASSED
+    # --------------------------------------------------------
+
+    if validation_passed:
+        print(
+            "✅ Validation passed"
+        )
+
         return "duplicate_check"
+
+    # --------------------------------------------------------
+    # VALIDATION FAILED
+    # --------------------------------------------------------
 
     retry_count = state.get(
         "retry_count",
@@ -32,28 +52,58 @@ def route_after_validation(state):
     )
 
     if retry_count < MAX_RETRIES:
-        state["retry_count"] = retry_count + 1
         print(
-            f"🔄 Validation retry "
+            f"🔄 Validation failed. "
+            f"Regeneration required: "
             f"{retry_count + 1}/{MAX_RETRIES}"
         )
-        return "writer"
 
-    print("❌ Maximum validation retries reached.")
+        return "regenerate"
+
+    # --------------------------------------------------------
+    # MAX RETRIES
+    # --------------------------------------------------------
+
+    print(
+        "❌ Maximum validation retries reached."
+    )
 
     return "failed"
 
 
 def route_after_duplicate_check(state):
     """
-    Reject duplicate content and regenerate it.
+    Decide what happens after duplicate detection.
+
+    Unique:
+        → publish
+
+    Duplicate:
+        → regenerate
+
+    Maximum retries:
+        → failed
     """
 
-    if not state.get(
+    is_duplicate = state.get(
         "is_duplicate",
         False,
-    ):
+    )
+
+    # --------------------------------------------------------
+    # UNIQUE POST
+    # --------------------------------------------------------
+
+    if not is_duplicate:
+        print(
+            "✅ Duplicate check passed"
+        )
+
         return "publish"
+
+    # --------------------------------------------------------
+    # DUPLICATE DETECTED
+    # --------------------------------------------------------
 
     retry_count = state.get(
         "retry_count",
@@ -61,15 +111,20 @@ def route_after_duplicate_check(state):
     )
 
     if retry_count < MAX_RETRIES:
-        state["retry_count"] = retry_count + 1
-
         print(
-            f"🔄 Duplicate retry "
+            f"🔄 Duplicate detected. "
+            f"Regeneration required: "
             f"{retry_count + 1}/{MAX_RETRIES}"
         )
 
-        return "writer"
+        return "regenerate"
 
-    print("❌ Maximum duplicate retries reached.")
+    # --------------------------------------------------------
+    # MAX RETRIES
+    # --------------------------------------------------------
+
+    print(
+        "❌ Maximum duplicate retries reached."
+    )
 
     return "failed"

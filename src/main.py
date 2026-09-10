@@ -1,57 +1,110 @@
 from src.graph.workflow import graph
+from src.services.history import update_execution_status
 
 
 def main():
+    """
+    Application entry point.
+    """
+
     print("\n")
     print("========================================")
-    print("🤖 AUTONOMOUS LINKEDIN AI CONTENT AGENT")
+    print("🚀 LINKEDIN AI AGENT")
     print("========================================")
-    print("Starting workflow...")
-    print("========================================")
+    print("\n")
 
     try:
-        final_state = graph.invoke({})
 
-        print("\n========================================")
-        print("🏁 WORKFLOW COMPLETED")
+        result = graph.invoke({})
+
+        print("\n")
+        print("========================================")
+        print("🏁 WORKFLOW FINISHED")
         print("========================================")
 
-        print(f"Status: {final_state.get('status')}")
+        print(
+            f"Status: "
+            f"{result.get('status')}"
+        )
 
-        if final_state.get("topic"):
-            print(f"Topic: {final_state['topic']}")
+        print(
+            f"Execution Status: "
+            f"{result.get('execution_status')}"
+        )
 
-        if final_state.get("subtopic"):
-            print(f"Subtopic: {final_state['subtopic']}")
+        print("\n")
 
-        if final_state.get("quality_score") is not None:
-            print(
-                f"Quality Score: "
-                f"{final_state['quality_score']}"
-            )
-
-        if final_state.get("duplicate_score") is not None:
-            print(
-                f"Duplicate Score: "
-                f"{final_state['duplicate_score']:.4f}"
-            )
-
-        if final_state.get("linkedin_post_id"):
-            print(
-                f"LinkedIn Post ID: "
-                f"{final_state['linkedin_post_id']}"
-            )
-
-        print("========================================")
+        return result
 
     except Exception as exc:
-        print("\n========================================")
-        print("❌ WORKFLOW ERROR")
+
+        print("\n")
         print("========================================")
-        print(str(exc))
+        print("💥 WORKFLOW EXCEPTION")
         print("========================================")
 
+        print(
+            f"Error: {exc}"
+        )
+
+        print("\n")
+
+        # ----------------------------------------------------
+        # Mark execution as failed
+        # ----------------------------------------------------
+
+        try:
+
+            execution_key = (
+                result_execution_key()
+            )
+
+            if execution_key:
+
+                update_execution_status(
+                    execution_key,
+                    "failed",
+                )
+
+        except Exception as lifecycle_error:
+
+            print(
+                "⚠️ Could not update "
+                "execution failure status:"
+            )
+
+            print(
+                lifecycle_error
+            )
+
         raise
+
+
+def result_execution_key():
+    """
+    Read the currently claimed execution key
+    from the persisted execution history.
+
+    This is intentionally kept simple.
+    The execution key is based on the current
+    IST morning/evening slot.
+    """
+
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    now = datetime.now(
+        ZoneInfo("Asia/Kolkata")
+    )
+
+    if now.hour < 12:
+        slot = "morning"
+    else:
+        slot = "evening"
+
+    return (
+        f"{now.strftime('%Y-%m-%d')}-{slot}"
+    )
 
 
 if __name__ == "__main__":

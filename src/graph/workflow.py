@@ -1,29 +1,49 @@
 import os
 
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
 from dotenv import load_dotenv
 from langgraph.graph import END, START, StateGraph
 
-from src.agents.research_agent import research_topic, synthesize_research
-from src.agents.topic_agent import select_topic
-from src.agents.validator_agent import validate_post
-from src.agents.writer_agent import generate_post
+from src.agents.research_agent import (
+    research_topic,
+    synthesize_research,
+)
+
+from src.agents.topic_agent import (
+    select_topic,
+)
+
+from src.agents.validator_agent import (
+    validate_post,
+)
+
+from src.agents.writer_agent import (
+    generate_post,
+)
 
 from src.graph.router import (
     route_after_duplicate_check,
     route_after_validation,
 )
-from src.graph.state import LinkedInState
 
-from src.services.duplicate_detector import check_duplicate
-from src.services.history import save_post
-from src.tools.linkedin import publish_to_linkedin
-from datetime import datetime
-from zoneinfo import ZoneInfo
+from src.graph.state import (
+    LinkedInState,
+)
+
+from src.services.duplicate_detector import (
+    check_duplicate,
+)
 
 from src.services.history import (
     claim_execution,
     save_post,
     update_execution_status,
+)
+
+from src.tools.linkedin import (
+    publish_to_linkedin,
 )
 
 load_dotenv()
@@ -33,9 +53,19 @@ load_dotenv()
 # CONFIGURATION
 # ============================================================
 
-def mark_execution_completed(state: LinkedInState):
+MAX_RETRIES = 3
+MIN_QUALITY_SCORE = 0.85
+
+
+# ============================================================
+# EXECUTION LIFECYCLE
+# ============================================================
+
+def mark_execution_completed(
+    state: LinkedInState,
+):
     """
-    Mark the current execution as completed.
+    Mark execution as completed.
     """
 
     execution_key = state.get(
@@ -57,9 +87,12 @@ def mark_execution_completed(state: LinkedInState):
         "execution_status": "completed",
     }
 
-def mark_execution_failed(state: LinkedInState):
+
+def mark_execution_failed(
+    state: LinkedInState,
+):
     """
-    Mark the current execution as failed.
+    Mark execution as failed.
     """
 
     execution_key = state.get(
@@ -82,12 +115,22 @@ def mark_execution_failed(state: LinkedInState):
         "status": "failed",
     }
 
-MAX_RETRIES = 3
 
-def execution_node(state: LinkedInState):
+# ============================================================
+# EXECUTION / IDEMPOTENCY
+# ============================================================
+
+def execution_node(
+    state: LinkedInState,
+):
     """
-    Create and claim a unique execution key
-    for the current scheduled slot.
+    Create a unique execution key
+    for morning/evening scheduling.
+
+    Example:
+
+    2026-09-10-morning
+    2026-09-10-evening
     """
 
     print("\n==============================")
@@ -98,7 +141,6 @@ def execution_node(state: LinkedInState):
         ZoneInfo("Asia/Kolkata")
     )
 
-    # Determine schedule slot
     if now.hour < 12:
         slot = "morning"
     else:
@@ -112,12 +154,14 @@ def execution_node(state: LinkedInState):
         f"Execution Key: {execution_key}"
     )
 
-    # Claim this execution
-    is_new_execution = claim_execution(
-        execution_key
+    is_new_execution = (
+        claim_execution(
+            execution_key
+        )
     )
 
     if not is_new_execution:
+
         print(
             "⚠️ This execution has already "
             "been processed."
@@ -125,24 +169,37 @@ def execution_node(state: LinkedInState):
 
         return {
             "execution_key": execution_key,
-            "execution_status": "already_processed",
-            "status": "already_processed",
+            "execution_status":
+                "already_processed",
+            "status":
+                "already_processed",
         }
 
-    print("✅ New execution claimed")
+    print(
+        "✅ New execution claimed"
+    )
 
     return {
         "execution_key": execution_key,
         "execution_status": "started",
-        "status": "execution_started",
+        "status":
+            "execution_started",
     }
 
-def route_after_execution(state: LinkedInState):
+
+def route_after_execution(
+    state: LinkedInState,
+):
     """
-    Stop the workflow if this execution was already processed.
+    Decide whether execution should continue.
     """
 
-    if state.get("execution_status") == "already_processed":
+    if (
+        state.get(
+            "execution_status"
+        )
+        == "already_processed"
+    ):
         return "stop"
 
     return "continue"
@@ -152,9 +209,11 @@ def route_after_execution(state: LinkedInState):
 # 1. TOPIC NODE
 # ============================================================
 
-def topic_node(state: LinkedInState):
+def topic_node(
+    state: LinkedInState,
+):
     """
-    Select a fresh AI/ML topic, subtopic and content angle.
+    Select a fresh AI/ML topic.
     """
 
     print("\n==============================")
@@ -163,16 +222,33 @@ def topic_node(state: LinkedInState):
 
     selection = select_topic()
 
-    print(f"Topic     : {selection.topic}")
-    print(f"Subtopic  : {selection.subtopic}")
-    print(f"Angle     : {selection.angle}")
+    print(
+        f"Topic     : {selection.topic}"
+    )
+
+    print(
+        f"Subtopic  : {selection.subtopic}"
+    )
+
+    print(
+        f"Angle     : {selection.angle}"
+    )
 
     return {
-        "topic": selection.topic,
-        "subtopic": selection.subtopic,
-        "angle": selection.angle,
-        "retry_count": 0,
-        "status": "topic_selected",
+        "topic":
+            selection.topic,
+
+        "subtopic":
+            selection.subtopic,
+
+        "angle":
+            selection.angle,
+
+        "retry_count":
+            0,
+
+        "status":
+            "topic_selected",
     }
 
 
@@ -180,10 +256,11 @@ def topic_node(state: LinkedInState):
 # 2. RESEARCH NODE
 # ============================================================
 
-def research_node(state: LinkedInState):
+def research_node(
+    state: LinkedInState,
+):
     """
-    Research the selected AI/ML topic and
-    synthesize the research into a technical brief.
+    Research the selected topic.
     """
 
     print("\n==============================")
@@ -194,16 +271,17 @@ def research_node(state: LinkedInState):
     subtopic = state["subtopic"]
     angle = state["angle"]
 
-    print(f"Researching: {topic} → {subtopic}")
+    print(
+        f"Researching: "
+        f"{topic} → {subtopic}"
+    )
 
-    # Step 1: Tavily research
     raw_research = research_topic(
         topic=topic,
         subtopic=subtopic,
         angle=angle,
     )
 
-    # Step 2: LLM synthesizes research
     research = synthesize_research(
         topic=topic,
         subtopic=subtopic,
@@ -211,11 +289,16 @@ def research_node(state: LinkedInState):
         raw_research=raw_research,
     )
 
-    print("✅ Research completed")
+    print(
+        "✅ Research completed"
+    )
 
     return {
-        "research": research,
-        "status": "research_completed",
+        "research":
+            research,
+
+        "status":
+            "research_completed",
     }
 
 
@@ -223,50 +306,71 @@ def research_node(state: LinkedInState):
 # 3. WRITER NODE
 # ============================================================
 
-def writer_node(state: LinkedInState):
+def writer_node(
+    state: LinkedInState,
+):
     """
-    Generate the LinkedIn post.
-
-    If this is a regeneration attempt,
-    validation feedback and duplicate similarity
-    are passed to the writer so it can improve
-    the next version.
+    Generate LinkedIn content.
     """
 
     print("\n==============================")
     print("✍️ WRITER AGENT")
     print("==============================")
 
-    retry_count = state.get("retry_count", 0)
+    retry_count = state.get(
+        "retry_count",
+        0,
+    )
 
     if retry_count > 0:
-        print(f"♻️ Regeneration attempt: {retry_count}")
+
+        print(
+            f"♻️ Regeneration attempt: "
+            f"{retry_count}"
+        )
 
     post = generate_post(
         topic=state["topic"],
         subtopic=state["subtopic"],
         angle=state["angle"],
         research=state["research"],
-        validation_feedback=state.get(
-            "validation_feedback",
-            "",
-        ),
-        duplicate_score=state.get(
-            "duplicate_score",
-            0.0,
-        ),
-        retry_count=retry_count,
+
+        validation_feedback=
+            state.get(
+                "validation_feedback",
+                "",
+            ),
+
+        duplicate_score=
+            state.get(
+                "duplicate_score",
+                0.0,
+            ),
+
+        retry_count=
+            retry_count,
     )
 
     print("\nGenerated Post:")
-    print("------------------------------")
+    print(
+        "------------------------------"
+    )
+
     print(post)
-    print("------------------------------")
+
+    print(
+        "------------------------------"
+    )
 
     return {
-        "generated_post": post,
-        "retry_count": retry_count,
-        "status": "post_generated",
+        "generated_post":
+            post,
+
+        "retry_count":
+            retry_count,
+
+        "status":
+            "post_generated",
     }
 
 
@@ -274,17 +378,11 @@ def writer_node(state: LinkedInState):
 # 4. VALIDATOR NODE
 # ============================================================
 
-def validator_node(state: LinkedInState):
+def validator_node(
+    state: LinkedInState,
+):
     """
-    Validate the generated post for:
-
-    - AI/ML relevance
-    - Technical correctness
-    - Professional quality
-    - Recruiter relevance
-    - Engineer relevance
-    - Grammar
-    - Overall quality score
+    Validate the generated post.
     """
 
     print("\n==============================")
@@ -292,244 +390,466 @@ def validator_node(state: LinkedInState):
     print("==============================")
 
     result = validate_post(
-        topic=state["topic"],
-        subtopic=state["subtopic"],
-        angle=state["angle"],
-        post=state["generated_post"],
+        post=state[
+            "generated_post"
+        ],
+
+        research=state.get(
+            "research",
+            "",
+        ),
     )
 
-    print(f"AI/ML             : {result.is_ai_ml}")
-    print(f"Technical         : {result.technically_sound}")
-    print(f"Professional      : {result.professional}")
-    print(f"Recruiter         : {result.recruiter_relevant}")
-    print(f"Engineer          : {result.engineer_relevant}")
-    print(f"Grammar           : {result.grammar_ok}")
-    print(f"Quality Score     : {result.quality_score}")
-    print(f"Feedback          : {result.feedback}")
+    print(
+        f"AI/ML             : "
+        f"{result['is_ai_ml']}"
+    )
+
+    print(
+        f"Technical         : "
+        f"{result['technically_sound']}"
+    )
+
+    print(
+        f"Professional      : "
+        f"{result['professional']}"
+    )
+
+    print(
+        f"Recruiter         : "
+        f"{result['recruiter_relevant']}"
+    )
+
+    print(
+        f"Engineer          : "
+        f"{result['engineer_relevant']}"
+    )
+
+    print(
+        f"Grammar           : "
+        f"{result['grammar_ok']}"
+    )
+
+    print(
+        f"Quality Score     : "
+        f"{result['quality_score']}"
+    )
+
+    print(
+        f"Feedback          : "
+        f"{result['feedback']}"
+    )
 
     return {
-        "is_ai_ml": result.is_ai_ml,
-        "technically_sound": result.technically_sound,
-        "professional": result.professional,
-        "recruiter_relevant": result.recruiter_relevant,
-        "engineer_relevant": result.engineer_relevant,
-        "grammar_ok": result.grammar_ok,
-        "quality_score": result.quality_score,
-        "validation_feedback": result.feedback,
-        "status": "validated",
+        "is_ai_ml":
+            result["is_ai_ml"],
+
+        "technically_sound":
+            result[
+                "technically_sound"
+            ],
+
+        "professional":
+            result[
+                "professional"
+            ],
+
+        "recruiter_relevant":
+            result[
+                "recruiter_relevant"
+            ],
+
+        "engineer_relevant":
+            result[
+                "engineer_relevant"
+            ],
+
+        "grammar_ok":
+            result[
+                "grammar_ok"
+            ],
+
+        "quality_score":
+            result[
+                "quality_score"
+            ],
+
+        "validation_feedback":
+            result[
+                "feedback"
+            ],
+
+        "status":
+            "validated",
     }
 
 
 # ============================================================
-# 5. DUPLICATE DETECTION NODE
+# 5. DUPLICATE DETECTION
 # ============================================================
 
-def duplicate_node(state: LinkedInState):
+def duplicate_node(
+    state: LinkedInState,
+):
     """
-    Compare the generated post against
-    previously published posts.
+    Check semantic similarity against
+    previously generated/published posts.
     """
 
     print("\n==============================")
     print("🔍 DUPLICATE DETECTOR")
     print("==============================")
 
-    post = state["generated_post"]
+    post = state[
+        "generated_post"
+    ]
 
-    is_duplicate, similarity = check_duplicate(post)
+    is_duplicate, similarity = (
+        check_duplicate(post)
+    )
 
-    print(f"Similarity Score : {similarity:.4f}")
-    print(f"Duplicate        : {is_duplicate}")
+    print(
+        f"Similarity Score : "
+        f"{similarity:.4f}"
+    )
+
+    print(
+        f"Duplicate        : "
+        f"{is_duplicate}"
+    )
 
     if is_duplicate:
-        print("⚠️ Duplicate detected")
+        print(
+            "⚠️ Duplicate detected"
+        )
     else:
-        print("✅ Post is unique")
+        print(
+            "✅ Post is unique"
+        )
 
     return {
-        "is_duplicate": is_duplicate,
-        "duplicate_score": similarity,
-        "status": (
-            "duplicate_detected"
-            if is_duplicate
-            else "unique_post"
-        ),
+        "is_duplicate":
+            is_duplicate,
+
+        "duplicate_score":
+            similarity,
+
+        "status":
+            (
+                "duplicate_detected"
+                if is_duplicate
+                else "unique_post"
+            ),
     }
 
 
 # ============================================================
-# 6. REGENERATE NODE
+# 6. REGENERATE
 # ============================================================
 
-def regenerate_node(state: LinkedInState):
+def regenerate_node(
+    state: LinkedInState,
+):
     """
-    Increment retry counter.
+    Increment retry count.
 
-    The next writer invocation receives:
-    - validation feedback
-    - duplicate score
-    - retry count
-
-    so the new post can be substantially different.
+    Writer receives the new retry count,
+    validation feedback and duplicate score.
     """
 
-    retry_count = state.get("retry_count", 0) + 1
+    retry_count = (
+        state.get(
+            "retry_count",
+            0,
+        )
+        + 1
+    )
 
     print("\n==============================")
     print("♻️ REGENERATION")
     print("==============================")
 
-    print(f"Retry attempt: {retry_count}/{MAX_RETRIES}")
-
-    if retry_count >= MAX_RETRIES:
-        print("⚠️ Maximum retry limit reached")
+    print(
+        f"Retry attempt: "
+        f"{retry_count}/{MAX_RETRIES}"
+    )
 
     return {
-        "retry_count": retry_count,
-        "status": "regenerating",
+        "retry_count":
+            retry_count,
+
+        "status":
+            "regenerating",
     }
 
 
 # ============================================================
-# 7. PUBLISH NODE
+# 7. PUBLISH
 # ============================================================
 
-def publish_node(state: LinkedInState):
+def publish_node(
+    state: LinkedInState,
+):
     """
-    Final safety gate + LinkedIn publishing.
-
-    The post is published only when:
-    1. Validation passed
-    2. Duplicate check passed
-    3. DRY_RUN is disabled
+    Final safety gate and publishing.
     """
 
     print("\n==============================")
     print("🚀 PUBLISH NODE")
     print("==============================")
 
-    post = state["generated_post"]
+    post = state[
+        "generated_post"
+    ]
 
     # --------------------------------------------------------
-    # FINAL VALIDATION SAFETY CHECK
+    # FINAL VALIDATION GATE
     # --------------------------------------------------------
 
     validation_passed = (
-        state.get("is_ai_ml", False)
-        and state.get("technically_sound", False)
-        and state.get("professional", False)
-        and state.get("recruiter_relevant", False)
-        and state.get("engineer_relevant", False)
-        and state.get("grammar_ok", False)
-        and state.get("quality_score", 0.0) >= 0.85
+        state.get(
+            "is_ai_ml",
+            False,
+        )
+        and state.get(
+            "technically_sound",
+            False,
+        )
+        and state.get(
+            "professional",
+            False,
+        )
+        and state.get(
+            "recruiter_relevant",
+            False,
+        )
+        and state.get(
+            "engineer_relevant",
+            False,
+        )
+        and state.get(
+            "grammar_ok",
+            False,
+        )
+        and state.get(
+            "quality_score",
+            0.0,
+        ) >= MIN_QUALITY_SCORE
     )
 
     if not validation_passed:
-        print("❌ FINAL SAFETY CHECK FAILED")
-        print("Post will NOT be published.")
+
+        print(
+            "❌ FINAL VALIDATION FAILED"
+        )
+
+        print(
+            "Post will NOT be published."
+        )
 
         return {
-            "status": "publish_blocked_validation"
+            "status":
+                "publish_blocked_validation"
         }
 
     # --------------------------------------------------------
-    # FINAL DUPLICATE CHECK
+    # FINAL DUPLICATE GATE
     # --------------------------------------------------------
 
-    if state.get("is_duplicate", True):
-        print("❌ FINAL DUPLICATE CHECK FAILED")
-        print("Post will NOT be published.")
+    if state.get(
+        "is_duplicate",
+        True,
+    ):
+
+        print(
+            "❌ FINAL DUPLICATE CHECK FAILED"
+        )
+
+        print(
+            "Post will NOT be published."
+        )
 
         return {
-            "status": "publish_blocked_duplicate"
+            "status":
+                "publish_blocked_duplicate"
         }
 
     # --------------------------------------------------------
-    # DRY RUN CHECK
+    # DRY RUN
     # --------------------------------------------------------
 
-    dry_run = os.getenv(
-        "DRY_RUN",
-        "true"
-    ).lower() == "true"
-    print(f"🔥 DRY_RUN VALUE: {dry_run}")
+    dry_run = (
+        os.getenv(
+            "DRY_RUN",
+            "true",
+        ).lower()
+        == "true"
+    )
 
-    print(f"🔥 DRY_RUN ENV: {os.getenv('DRY_RUN')}")
+    print(
+        f"🔥 DRY_RUN: {dry_run}"
+    )
 
     if dry_run:
-        print("🔥🔥🔥 NEW WORKFLOW CODE IS RUNNING 🔥🔥🔥")
-        print("\n🧪 DRY RUN MODE")
-        print("LinkedIn publishing is disabled.")
 
-        print("\nPost that would be published:")
-        print("--------------------------------")
+        print(
+            "\n🧪 DRY RUN MODE"
+        )
+
+        print(
+            "LinkedIn publishing "
+            "is disabled."
+        )
+
+        print(
+            "\nPost that would be published:"
+        )
+
+        print(
+            "--------------------------------"
+        )
+
         print(post)
-        print("--------------------------------")
 
-        print("🔥 DEBUG: ABOUT TO SAVE POST TO HISTORY")
+        print(
+            "--------------------------------"
+        )
 
         save_post(
             {
-                "content": post,
-                "topic": state.get("topic"),
-                "subtopic": state.get("subtopic"),
-                "angle": state.get("angle"),
-                "linkedin_post_id": None,
-                "quality_score": state.get("quality_score"),
-                "duplicate_score": state.get("duplicate_score"),
-                "status": "dry_run",
+                "content":
+                    post,
+
+                "topic":
+                    state.get(
+                        "topic"
+                    ),
+
+                "subtopic":
+                    state.get(
+                        "subtopic"
+                    ),
+
+                "angle":
+                    state.get(
+                        "angle"
+                    ),
+
+                "linkedin_post_id":
+                    None,
+
+                "quality_score":
+                    state.get(
+                        "quality_score"
+                    ),
+
+                "duplicate_score":
+                    state.get(
+                        "duplicate_score"
+                    ),
+
+                "status":
+                    "dry_run",
             }
         )
 
-        print("💾 Dry-run post saved to history")
+        print(
+            "💾 Dry-run post saved "
+            "to history"
+        )
 
         return {
-            "status": "dry_run"
+            "status":
+                "dry_run"
         }
 
     # --------------------------------------------------------
-    # REAL LINKEDIN PUBLISH
+    # REAL PUBLISH
     # --------------------------------------------------------
 
-    print("📤 Publishing to LinkedIn...")
+    print(
+        "📤 Publishing to LinkedIn..."
+    )
 
-    linkedin_post_id = publish_to_linkedin(post)
+    linkedin_post_id = (
+        publish_to_linkedin(
+            post
+        )
+    )
 
-    print("✅ LinkedIn post published!")
-    print(f"Post ID: {linkedin_post_id}")
+    print(
+        "✅ LinkedIn post published!"
+    )
+
+    print(
+        f"Post ID: "
+        f"{linkedin_post_id}"
+    )
 
     # --------------------------------------------------------
-    # SAVE HISTORY
+    # HISTORY
     # --------------------------------------------------------
 
     save_post(
         {
-            "content": post,
-            "topic": state.get("topic"),
-            "subtopic": state.get("subtopic"),
-            "angle": state.get("angle"),
-            "linkedin_post_id": linkedin_post_id,
-            "quality_score": state.get("quality_score"),
-            "duplicate_score": state.get("duplicate_score"),
-            "status": "published",
+            "content":
+                post,
+
+            "topic":
+                state.get(
+                    "topic"
+                ),
+
+            "subtopic":
+                state.get(
+                    "subtopic"
+                ),
+
+            "angle":
+                state.get(
+                    "angle"
+                ),
+
+            "linkedin_post_id":
+                linkedin_post_id,
+
+            "quality_score":
+                state.get(
+                    "quality_score"
+                ),
+
+            "duplicate_score":
+                state.get(
+                    "duplicate_score"
+                ),
+
+            "status":
+                "published",
         }
     )
 
-    print("💾 Post saved to history")
+    print(
+        "💾 Post saved to history"
+    )
 
     return {
-        "linkedin_post_id": linkedin_post_id,
-        "status": "published",
+        "linkedin_post_id":
+            linkedin_post_id,
+
+        "status":
+            "published",
     }
+
+
 # ============================================================
 # 8. FAILED NODE
 # ============================================================
 
-def failed_node(state: LinkedInState):
+def failed_node(
+    state: LinkedInState,
+):
     """
-    Final failure state when the post could not
-    pass validation or duplicate detection
-    after maximum retries.
+    Logical failure after maximum retries.
     """
 
     print("\n==============================")
@@ -542,7 +862,7 @@ def failed_node(state: LinkedInState):
     )
 
     print(
-        f"Maximum retry limit reached: "
+        f"Retries used: "
         f"{retry_count}/{MAX_RETRIES}"
     )
 
@@ -551,7 +871,8 @@ def failed_node(state: LinkedInState):
     )
 
     return {
-        "status": "failed",
+        "status":
+            "failed",
     }
 
 
@@ -559,12 +880,19 @@ def failed_node(state: LinkedInState):
 # LANGGRAPH
 # ============================================================
 
-builder = StateGraph(LinkedInState)
+builder = StateGraph(
+    LinkedInState
+)
 
 
-# ------------------------------------------------------------
-# Add Nodes
-# ------------------------------------------------------------
+# ============================================================
+# NODES
+# ============================================================
+
+builder.add_node(
+    "execution",
+    execution_node,
+)
 
 builder.add_node(
     "topic",
@@ -606,29 +934,47 @@ builder.add_node(
     failed_node,
 )
 
-
-# ------------------------------------------------------------
-# Normal Flow
-# ------------------------------------------------------------
+builder.add_node(
+    "execution_completed",
+    mark_execution_completed,
+)
 
 builder.add_node(
-    "execution",
-    execution_node,
+    "execution_failed",
+    mark_execution_failed,
 )
+
+
+# ============================================================
+# START
+# ============================================================
 
 builder.add_edge(
     START,
     "execution",
 )
 
+
+# ============================================================
+# IDEMPOTENCY ROUTING
+# ============================================================
+
 builder.add_conditional_edges(
     "execution",
     route_after_execution,
     {
-        "continue": "topic",
-        "stop": END,
+        "continue":
+            "topic",
+
+        "stop":
+            END,
     },
 )
+
+
+# ============================================================
+# MAIN PIPELINE
+# ============================================================
 
 builder.add_edge(
     "topic",
@@ -646,39 +992,49 @@ builder.add_edge(
 )
 
 
-# ------------------------------------------------------------
-# Validation Routing
-# ------------------------------------------------------------
+# ============================================================
+# VALIDATION ROUTING
+# ============================================================
 
 builder.add_conditional_edges(
     "validator",
     route_after_validation,
     {
-        "duplicate_check": "duplicate",
-        "regenerate": "regenerate",
-        "failed": "failed",
+        "duplicate_check":
+            "duplicate",
+
+        "regenerate":
+            "regenerate",
+
+        "failed":
+            "execution_failed",
     },
 )
 
 
-# ------------------------------------------------------------
-# Duplicate Routing
-# ------------------------------------------------------------
+# ============================================================
+# DUPLICATE ROUTING
+# ============================================================
 
 builder.add_conditional_edges(
     "duplicate",
     route_after_duplicate_check,
     {
-        "publish": "publish",
-        "regenerate": "regenerate",
-        "failed": "failed",
+        "publish":
+            "publish",
+
+        "regenerate":
+            "regenerate",
+
+        "failed":
+            "execution_failed",
     },
 )
 
 
-# ------------------------------------------------------------
-# Regeneration Loop
-# ------------------------------------------------------------
+# ============================================================
+# REGENERATION LOOP
+# ============================================================
 
 builder.add_edge(
     "regenerate",
@@ -686,23 +1042,33 @@ builder.add_edge(
 )
 
 
-# ------------------------------------------------------------
-# End States
-# ------------------------------------------------------------
+# ============================================================
+# SUCCESS
+# ============================================================
 
 builder.add_edge(
     "publish",
-    END,
+    "execution_completed",
 )
 
 builder.add_edge(
-    "failed",
+    "execution_completed",
     END,
 )
 
 
 # ============================================================
-# COMPILE GRAPH
+# FAILURE
+# ============================================================
+
+builder.add_edge(
+    "execution_failed",
+    END,
+)
+
+
+# ============================================================
+# COMPILE
 # ============================================================
 
 graph = builder.compile()
