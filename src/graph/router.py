@@ -4,8 +4,8 @@ MIN_QUALITY_SCORE = 0.85
 
 def route_after_validation(state):
     """
-    Decide whether the generated post is good enough
-    or needs to be regenerated.
+    Decide whether the generated post is valid
+    or needs another generation attempt.
     """
 
     quality_score = state.get(
@@ -32,7 +32,14 @@ def route_after_validation(state):
     )
 
     if retry_count < MAX_RETRIES:
+        state["retry_count"] = retry_count + 1
+        print(
+            f"🔄 Validation retry "
+            f"{retry_count + 1}/{MAX_RETRIES}"
+        )
         return "writer"
+
+    print("❌ Maximum validation retries reached.")
 
     return "failed"
 
@@ -54,6 +61,15 @@ def route_after_duplicate_check(state):
     )
 
     if retry_count < MAX_RETRIES:
+        state["retry_count"] = retry_count + 1
+
+        print(
+            f"🔄 Duplicate retry "
+            f"{retry_count + 1}/{MAX_RETRIES}"
+        )
+
         return "writer"
+
+    print("❌ Maximum duplicate retries reached.")
 
     return "failed"
