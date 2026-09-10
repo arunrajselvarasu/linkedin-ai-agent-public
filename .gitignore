@@ -5,3 +5,7 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 .DS_Store
+
+# Runtime data / local history
+data/*.db
+data/posts.json
