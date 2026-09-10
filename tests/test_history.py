@@ -47,3 +47,14 @@ def test_save_post(tmp_path, monkeypatch):
     assert len(posts) == 1
     assert posts[0]["content"] == "Test AI engineering post"
     assert posts[0]["status"] == "dry_run"
+
+def test_failed_execution_can_be_retried(tmp_path, monkeypatch):
+    history_file = tmp_path / "posts.json"
+
+    monkeypatch.setattr(history, "HISTORY_FILE", history_file)
+
+    assert history.claim_execution("test-retry") is True
+
+    history.update_execution_status("test-retry", "failed")
+
+    assert history.claim_execution("test-retry") is True

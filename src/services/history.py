@@ -95,32 +95,26 @@ def save_post(post_data: dict[str, Any]):
 # ============================================================
 
 def claim_execution(execution_key: str) -> bool:
-    """
-    Claim an execution key.
-
-    Returns:
-        True  -> execution is new
-        False -> execution already exists
-    """
-
     data = _load_data()
+    executions = data.setdefault("executions", {})
 
-    executions = data.setdefault(
-        "executions",
-        {},
-    )
+    existing = executions.get(execution_key)
 
-    if execution_key in executions:
-        return False
+    if existing:
+        existing_status = existing.get("status")
+
+        if existing_status in {"started", "completed"}:
+            return False
+
+        if existing_status == "failed":
+            print(f"🔄 Retrying previously failed execution: {execution_key}")
 
     executions[execution_key] = {
-        "status": "started",
+        "status": "started"
     }
 
     _save_data(data)
-
     return True
-
 
 def update_execution_status(
     execution_key: str,
